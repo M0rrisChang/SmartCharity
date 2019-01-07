@@ -20,6 +20,8 @@ Balance of ```_tokenHolder``` would be added by ```msg.value```
 
 Propose a new proposal by giving receiver's address, amount that this proposal needs, decription of the proposal and voting period.
 
+Note that only Initiator of this Charity could make new Proposal.
+
 It will emit an event which contains ```proposalID``` of the proposal.
 
 ### Vote

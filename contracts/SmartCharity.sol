@@ -15,18 +15,14 @@ contract CharityInterface {
     // (used in the case `executeProposal` fails because it throws)
     uint constant executeProposalPeriod = 10 days;
 
-    //Token contract
+    // Initiator
+    address public initiator;
+
+    // Token contract
     Donation token;
 
     // Proposals to spend the Charity's ether
     Proposal[] public proposals;
-
-    // The minimum deposit (in wei) required to submit any proposal that is not
-    // requesting a new Curator (no deposit is required for splits)
-    uint public proposalDeposit;
-
-    // the accumulated sum of all current proposal deposits
-    uint sumOfProposalDeposits;
 
     struct Proposal {
         // The address where the `amount` will go to if the proposal is accepted
@@ -42,9 +38,6 @@ contract CharityInterface {
         // True if quorum has been reached, the votes have been counted, and
         // the majority said yes
         bool proposalPassed;
-        // Deposit in wei the creator added when submitting their proposal. It
-        // is taken from the msg.value of a newProposal call.
-        uint proposalDeposit;
         // Number of Tokens in favor of the proposal
         uint yea;
         // Number of Tokens opposed to the proposal
@@ -53,20 +46,16 @@ contract CharityInterface {
         mapping (address => bool) votedYes;
         // Simple mapping to check if a shareholder has voted against it
         mapping (address => bool) votedNo;
-        // Address of the shareholder who created the proposal
-        address creator;
     }
 
     /// @notice donate without getting tokens
     function() external payable;
 
     /// @notice `msg.sender` creates a proposal to send `_amount` Wei to
-    /// `_recipient` with the transaction data `_transactionData`. If
     /// Charity and sets `_recipient` as the new Charity's Curator.
     /// @param _recipient Address of the recipient of the proposed transaction
     /// @param _amount Amount of wei to be sent with the proposed transaction
     /// @param _description String describing the proposal
-    /// @param _transactionData Data of the proposed transaction
     /// @param _debatingPeriod Time used for debating a proposal, at least 2
     /// weeks for a regular proposal, 10 days for new Curator proposal
     /// @return The proposal ID. Needed for voting on the proposal
@@ -74,9 +63,8 @@ contract CharityInterface {
         address _recipient,
         uint _amount,
         string memory _description,
-        bytes memory _transactionData,
         uint _debatingPeriod
-    ) public payable returns (uint _proposalID);
+    ) onlyInitiator public returns (uint _proposalID);
 
     /// @notice Vote on proposal `_proposalID` with `_supportsProposal`
     /// @param _proposalID The proposal ID
@@ -87,11 +75,9 @@ contract CharityInterface {
     /// `_transactionData` has been voted for or rejected, and executes the
     /// transaction in the case it has been voted for.
     /// @param _proposalID The proposal ID
-    /// @param _transactionData The data of the proposed transaction
     /// @return Whether the proposed transaction has been executed or not
     function executeProposal(
         uint _proposalID,
-        bytes memory _transactionData
     ) public payable returns (bool _success);
 
     event ProposalAdded(
@@ -106,20 +92,22 @@ contract CharityInterface {
 
 // The Charity contract itself
 contract TheCharity is CharityInterface {
-
-    // Modifier that allows only shareholders to vote and create new proposals
     modifier onlyTokenholders {
         require(token.balanceOf(msg.sender) != 0);
             _;
     }
 
+    modifier onlyInitiator {
+        require(msg.sender == initiator);
+            _;
+    }
+
     constructor(
-        uint _proposalDeposit,
         Donation _token
     ) public {
         token = _token;
-        proposalDeposit = _proposalDeposit;
         proposals.length = 1; // avoids a proposal with ID 0 because it is used
+	initiator = msg.sender;
     }
 
     function() external payable {
@@ -147,10 +135,6 @@ contract TheCharity is CharityInterface {
         p.votingDeadline = now + _debatingPeriod;
         p.open = true;
         //p.proposalPassed = False; // that's default
-        p.creator = msg.sender;
-        p.proposalDeposit = msg.value;
-
-        sumOfProposalDeposits += msg.value;
 
         emit ProposalAdded(
             _proposalID,
@@ -215,7 +199,7 @@ contract TheCharity is CharityInterface {
 
         bool proposalCheck = true;
 
-        if (p.amount > actualBalance())
+        if (p.amount > address(this).balance)
             proposalCheck = false;
 
 
@@ -247,9 +231,5 @@ contract TheCharity is CharityInterface {
         if (p.open)
             sumOfProposalDeposits -= p.proposalDeposit;
         p.open = false;
-    }
-
-    function actualBalance() public view returns (uint _actualBalance) {
-        return address(this).balance - sumOfProposalDeposits;
     }
 }
